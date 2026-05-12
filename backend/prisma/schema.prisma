@@ -1,20 +1,19 @@
-// 1. Konfiguracja Prisma
+// 1. Prisma Configuration
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql" // Używamy pancernego PostgreSQL
-  url      = env("DATABASE_URL")
+  provider = "postgresql"
 }
 
-// 2. Enumy - Sztywne słowniki
+// 2. Enums - Strong typed dictionaries
 enum ReactionType {
-  LIKE    // Lubię to
-  LOVE    // Super
-  HAHA    // Haha
-  SAD     // Przykro mi
-  ANGRY   // Wrrr
+  LIKE    
+  LOVE    
+  HAHA    
+  SAD     
+  ANGRY   
 }
 
 enum NotifType {
@@ -24,33 +23,33 @@ enum NotifType {
   MESSAGE
 }
 
-// 3. Modele Bazy Danych
+// 3. Database Models
 
 model User {
-  id              String     @id @default(uuid()) // Bezpieczne, trudne do odgadnięcia ID
+  id              String     @id @default(uuid()) // Unique ID using UUID for security
   firstName       String
   lastName        String
   username        String     @unique
   email           String     @unique
-  password        String     // Tutaj trafi zhashowane hasło (bcrypt)
+  password        String     // Hashed password (bcrypt)
   dateOfBirth     DateTime
-  acceptedTerms   Boolean    // RODO i regulamin
-  avatarUrl       String?    // Opcjonalne zdjęcie profilowe
+  acceptedTerms   Boolean    // GDPR compliance
+  avatarUrl       String?    // Optional profile picture
   
-  // Relacje
+  // Relations
   posts           Post[]
   comments        Comment[]
   reactions       Reaction[]
   
-  // Znajomi (Relacja wiele-do-wielu do samej siebie)
+  // Friends System (Self-relation many-to-many)
   friendships     Friendship[] @relation("UserFriendships")
   friendOf        Friendship[] @relation("FriendOfUser")
   
-  // Powiadomienia
+  // Notifications System
   notifsReceived  Notification[] @relation("NotifReceiver")
   notifsSent      Notification[] @relation("NotifActor")
   
-  // Komunikator i Grupy
+  // Chat & Groups
   messages        Message[]
   conversations   ConversationParticipant[]
   groupMembers    GroupMember[]
@@ -61,13 +60,13 @@ model User {
 
 model Post {
   id          String     @id @default(uuid())
-  content     String?    @db.Text // Pozwala na bardzo długie wpisy
-  imageUrl    String?    // Link do wrzuconego zdjęcia
+  content     String?    @db.Text // Long text content support
+  imageUrl    String?    // URL to the uploaded image
   
   authorId    String
   author      User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
   
-  groupId     String?    // Jeśli post jest w grupie
+  groupId     String?    // Optional: if post belongs to a group
   group       Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
 
   comments    Comment[]
@@ -87,7 +86,7 @@ model Comment {
   authorId    String
   author      User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
   
-  reactions   Reaction[] // Reakcje do samego komentarza
+  reactions   Reaction[] // Reactions for the comment itself
 
   createdAt   DateTime   @default(now())
 }
@@ -99,10 +98,10 @@ model Reaction {
   userId      String
   user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
   
-  postId      String?      // Reakcja na post...
+  postId      String?      // Reaction to a post
   post        Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
   
-  commentId   String?      // ...albo reakcja na komentarz
+  commentId   String?      // Reaction to a comment
   comment     Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
 
   createdAt   DateTime     @default(now())
@@ -132,14 +131,13 @@ model Notification {
   actorId     String
   actor       User      @relation("NotifActor", fields: [actorId], references: [id], onDelete: Cascade)
   
-  // Opcjonalne linki do akcji
   postId      String?
   commentId   String?
 
   createdAt   DateTime  @default(now())
 }
 
-// --- SYSTEM CZATU I GRUP ---
+// --- CHAT & GROUPS SYSTEM ---
 
 model Group {
   id          String        @id @default(uuid())
@@ -171,7 +169,7 @@ model GroupMember {
 model Conversation {
   id           String                    @id @default(uuid())
   isGroupChat  Boolean                   @default(false)
-  name         String?                   // Używane tylko w czatach grupowych
+  name         String?                   // Used for group chat names
   
   participants ConversationParticipant[]
   messages     Message[]
