@@ -1,13 +1,206 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
+// 1. Konfiguracja Prisma
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "postgresql"
+  provider = "postgresql" // Używamy pancernego PostgreSQL
+  url      = env("DATABASE_URL")
+}
+
+// 2. Enumy - Sztywne słowniki
+enum ReactionType {
+  LIKE    // Lubię to
+  LOVE    // Super
+  HAHA    // Haha
+  SAD     // Przykro mi
+  ANGRY   // Wrrr
+}
+
+enum NotifType {
+  NEW_COMMENT
+  NEW_REACTION
+  FRIEND_REQUEST
+  MESSAGE
+}
+
+// 3. Modele Bazy Danych
+
+model User {
+  id              String     @id @default(uuid()) // Bezpieczne, trudne do odgadnięcia ID
+  firstName       String
+  lastName        String
+  username        String     @unique
+  email           String     @unique
+  password        String     // Tutaj trafi zhashowane hasło (bcrypt)
+  dateOfBirth     DateTime
+  acceptedTerms   Boolean    // RODO i regulamin
+  avatarUrl       String?    // Opcjonalne zdjęcie profilowe
+  
+  // Relacje
+  posts           Post[]
+  comments        Comment[]
+  reactions       Reaction[]
+  
+  // Znajomi (Relacja wiele-do-wielu do samej siebie)
+  friendships     Friendship[] @relation("UserFriendships")
+  friendOf        Friendship[] @relation("FriendOfUser")
+  
+  // Powiadomienia
+  notifsReceived  Notification[] @relation("NotifReceiver")
+  notifsSent      Notification[] @relation("NotifActor")
+  
+  // Komunikator i Grupy
+  messages        Message[]
+  conversations   ConversationParticipant[]
+  groupMembers    GroupMember[]
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+}
+
+model Post {
+  id          String     @id @default(uuid())
+  content     String?    @db.Text // Pozwala na bardzo długie wpisy
+  imageUrl    String?    // Link do wrzuconego zdjęcia
+  
+  authorId    String
+  author      User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  groupId     String?    // Jeśli post jest w grupie
+  group       Group?     @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  comments    Comment[]
+  reactions   Reaction[]
+  
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
+
+model Comment {
+  id          String     @id @default(uuid())
+  content     String     @db.Text
+  
+  postId      String
+  post        Post       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  authorId    String
+  author      User       @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  
+  reactions   Reaction[] // Reakcje do samego komentarza
+
+  createdAt   DateTime   @default(now())
+}
+
+model Reaction {
+  id          String       @id @default(uuid())
+  type        ReactionType
+  
+  userId      String
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  postId      String?      // Reakcja na post...
+  post        Post?        @relation(fields: [postId], references: [id], onDelete: Cascade)
+  
+  commentId   String?      // ...albo reakcja na komentarz
+  comment     Comment?     @relation(fields: [commentId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime     @default(now())
+}
+
+model Friendship {
+  id          String   @id @default(uuid())
+  status      String   @default("PENDING") // PENDING, ACCEPTED, BLOCKED
+  
+  requesterId String
+  requester   User     @relation("UserFriendships", fields: [requesterId], references: [id], onDelete: Cascade)
+  
+  addresseeId String
+  addressee   User     @relation("FriendOfUser", fields: [addresseeId], references: [id], onDelete: Cascade)
+
+  createdAt   DateTime @default(now())
+}
+
+model Notification {
+  id          String    @id @default(uuid())
+  type        NotifType
+  isRead      Boolean   @default(false)
+  
+  receiverId  String
+  receiver    User      @relation("NotifReceiver", fields: [receiverId], references: [id], onDelete: Cascade)
+  
+  actorId     String
+  actor       User      @relation("NotifActor", fields: [actorId], references: [id], onDelete: Cascade)
+  
+  // Opcjonalne linki do akcji
+  postId      String?
+  commentId   String?
+
+  createdAt   DateTime  @default(now())
+}
+
+// --- SYSTEM CZATU I GRUP ---
+
+model Group {
+  id          String        @id @default(uuid())
+  name        String
+  description String?       @db.Text
+  coverUrl    String?
+  
+  creatorId   String
+  
+  members     GroupMember[]
+  posts       Post[]
+
+  createdAt   DateTime      @default(now())
+}
+
+model GroupMember {
+  id        String   @id @default(uuid())
+  role      String   @default("MEMBER") // ADMIN, MODERATOR, MEMBER
+  
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  joinedAt  DateTime @default(now())
+}
+
+model Conversation {
+  id           String                    @id @default(uuid())
+  isGroupChat  Boolean                   @default(false)
+  name         String?                   // Używane tylko w czatach grupowych
+  
+  participants ConversationParticipant[]
+  messages     Message[]
+
+  createdAt    DateTime                  @default(now())
+  updatedAt    DateTime                  @updatedAt
+}
+
+model ConversationParticipant {
+  id             String       @id @default(uuid())
+  
+  userId         String
+  user           User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  joinedAt       DateTime     @default(now())
+}
+
+model Message {
+  id             String       @id @default(uuid())
+  content        String       @db.Text
+  
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  createdAt      DateTime     @default(now())
 }
